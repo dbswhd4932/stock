@@ -1,9 +1,8 @@
-package com.example.stockman.service;
+package com.example.stockman.facade;
 
 import com.example.stockman.domain.Stock;
 import com.example.stockman.repository.StockRepository;
-import org.aspectj.lang.annotation.After;
-import org.assertj.core.api.Assertions;
+import com.example.stockman.service.OptimisticLockStockService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,10 +18,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 @SpringBootTest
-class StockServiceTest {
+class OptimisticLockStockFacadeTest {
 
     @Autowired
-    private OptimisticLockStockService stockService;
+    private OptimisticLockStockFacade optimisticLockStockFacade;
 
     @Autowired
     private StockRepository stockRepository;
@@ -39,42 +38,26 @@ class StockServiceTest {
     }
 
     @Test
-    void stock_decrease() {
-        stockService.decrease(1L, 1L);
-
-        Stock stock = stockRepository.findById(1L).orElseThrow();
-
-        // 100 -1 == 99
-        assertThat(stock.getQuantity()).isEqualTo(99);
-    }
-
-    @Test
     @DisplayName("동시에 100개의 요청이 들어온다")
     void 동시에_100개의_요청() throws InterruptedException {
         int threadCount = 100;
-        // 비동기로 실행하는 작업을 단순화하여 사용할 수 있도록 함.
         ExecutorService executorService = Executors.newFixedThreadPool(32);
         CountDownLatch latch = new CountDownLatch(threadCount);
 
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
-                    stockService.decrease(1L, 1L);
+                    optimisticLockStockFacade.decrease(1L, 1L);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 } finally {
-                    // latch -1 씩
                     latch.countDown();
                 }
             });
         }
-        // latch가 0 이 될때까지 기다린다.
         latch.await();
 
-        // 모든 요청이 완료되면
         Stock stock = stockRepository.findById(1L).orElseThrow();
-
-        // 100 - ( 1 * 100 ) = 0
         assertThat(stock.getQuantity()).isEqualTo(0);
     }
-
-
 }
